@@ -3,6 +3,7 @@ using BraveFish.WorkflowMaster.Entities;
 using BraveFish.WorkflowMaster.EntityFramework;
 using BraveFish.WorkflowMaster.Exceptions;
 using BraveFish.WorkflowMaster.Models;
+using BraveFish.WorkflowMaster.Utilities;
 using Microsoft.EntityFrameworkCore;
 using Newtonsoft.Json;
 
@@ -45,7 +46,20 @@ namespace BraveFish.WorkflowMaster.Application
             await _workflowDbContext.Pipelines.AddAsync(pipeline);
             await _workflowDbContext.SaveChangesAsync();
 
-            return ToPipelineInitShiftResponseModel(pipeline);
+            var planInitItem = JsonConvert
+                .DeserializeObject<PlanDefinition>(foundPlan.JsonDefinition)
+                .Items
+                .Where(p => p.FromState == AppConstants.Pipeline.Status.INIT)
+                .FirstOrDefault();
+
+            var initResult = await Shift(new PipelineShiftRequestModel
+            {
+                ToState = planInitItem.StateName,
+                Params = new Dictionary<string, string>(),
+                PipelineId = pipeline.Id
+            });
+
+            return initResult;
         }
 
         public async Task<PipelineInitShiftResponseModel> Shift(PipelineShiftRequestModel shiftRequest)
