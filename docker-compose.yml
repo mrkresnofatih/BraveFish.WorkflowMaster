@@ -7,3 +7,9 @@ services:
       - "5433:5432"
     environment:
       POSTGRES_PASSWORD: Pwd123#
+  rabbit:
+    container_name: "rabbit"
+    image: rabbitmq:3.10.5-management
+    ports:
+      - "5672:5672"
+      - "15672:15672"

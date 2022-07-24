@@ -1,4 +1,5 @@
-﻿using BraveFish.WorkflowMaster.Entities;
+﻿using BraveFish.RabbitBattleGear;
+using BraveFish.WorkflowMaster.Entities;
 using BraveFish.WorkflowMaster.EntityFramework;
 using BraveFish.WorkflowMaster.Exceptions;
 using BraveFish.WorkflowMaster.Models;
@@ -10,10 +11,16 @@ namespace BraveFish.WorkflowMaster.Application
     public class PipelineService : IPipelineService
     {
         private readonly WorkflowDbContext _workflowDbContext;
+        private readonly ITransitionService _transitionService;
+        private readonly RabbitBattleGearContext _battleGearContext;
 
-        public PipelineService(WorkflowDbContext workflowDbContext)
+        public PipelineService(WorkflowDbContext workflowDbContext, 
+            ITransitionService transitionService,
+            RabbitBattleGearContext battleGearContext)
         {
             _workflowDbContext = workflowDbContext;
+            _transitionService = transitionService;
+            _battleGearContext = battleGearContext;
         }
 
         public async Task<PipelineInitShiftResponseModel> Init(PipelineInitRequestModel initRequest)
@@ -54,15 +61,18 @@ namespace BraveFish.WorkflowMaster.Application
             }
 
             var planDefinition = JsonConvert.DeserializeObject<PlanDefinition>(foundPipeline.PlanJsonDefinition);
-            var transitionPossible = (planDefinition
+            var planItem = planDefinition
                 .Items
                 .Where(p => (p.FromState == foundPipeline.CurrentStatus) && (p.StateName == shiftRequest.ToState))
-                .Count() == 1);
+                .ToList().FirstOrDefault();
+            var transitionPossible = (planItem != null);
 
             if (!transitionPossible)
             {
                 throw new BadRequestException();
             }
+
+            var oldState = foundPipeline.CurrentStatus;
 
             foundPipeline.CurrentStatus = shiftRequest.ToState;
 
@@ -81,6 +91,24 @@ namespace BraveFish.WorkflowMaster.Application
 
             _workflowDbContext.Update(foundPipeline);
             await _workflowDbContext.SaveChangesAsync();
+
+            foreach(var itemAction in planItem.ItemActions)
+            {
+                _battleGearContext.PublishMessage(new PublishMessageRequest
+                {
+                    QueueName = itemAction.QueueName,
+                    Address = itemAction.AddressName,
+                    Message = foundPipeline.JsonParams
+                });
+            }
+
+            await _transitionService.Create(new TransitionCreateRequestModel
+            {
+                FromState = oldState,
+                ToState = shiftRequest.ToState,
+                Params = updatedParams,
+                PipelineId = shiftRequest.PipelineId
+            });
 
             return ToPipelineInitShiftResponseModel(foundPipeline);
         }

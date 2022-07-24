@@ -1,5 +1,6 @@
 using BraveFish.Base;
 using BraveFish.WorkflowMaster.Application;
+using BraveFish.WorkflowMaster.Contexts;
 using BraveFish.WorkflowMaster.EntityFramework;
 using BraveFish.WorkflowMaster.Utilities;
 using Microsoft.EntityFrameworkCore;
@@ -16,12 +17,15 @@ builder.Services.AddControllers().ConfigureApiToBaseBehaviour(
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
+builder.Services.AddRabbitContext();
+
 var connectionString = builder.Configuration.GetConnectionString("NpgSql");
 
 builder.Services.AddDbContext<WorkflowDbContext>(opt => opt.UseNpgsql(connectionString));
 
 builder.Services.AddScoped<IPlanService, PlanService>();
 builder.Services.AddScoped<IPipelineService, PipelineService>();
+builder.Services.AddScoped<ITransitionService, TransitionService>();
 
 builder.Logging.AddBaseConsoleLogger();
 
